@@ -148,7 +148,7 @@ const runAction = () => {
 		if (packageManager === "npm") {
 			run(`npm run ${buildScriptName} --if-present`, pkgRoot);
 		} else if (packageManager === "pnpm") {
-			run(`pnpm run ${buildScriptName} --if-present`, pkgRoot);
+			run(`pnpm run --if-present ${buildScriptName}`, pkgRoot);
 		} else {
 			// TODO: Use `yarn run ${buildScriptName} --if-present` once supported
 			// https://github.com/yarnpkg/yarn/issues/6894
@@ -166,7 +166,7 @@ const runAction = () => {
 			let command;
 			switch (packageManager) {
 				case "pnpm": {
-					command = "pnpm run";
+					command = "pnpx";
 					break;
 				}
 				case "yarn": {
