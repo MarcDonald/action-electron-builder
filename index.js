@@ -60,6 +60,23 @@ const getInput = (name, required) => {
 	return value;
 };
 
+const getPackageManager = (pkgRoot) => {
+	const pkgLockPath = join(pkgRoot, "package-lock.json");
+	const pnpmLockPath = join(pkgRoot, "pnpm-lock.yaml");
+	const yarnLockPath = join(pkgRoot, "yarn.lock");
+
+	if (existsSync(pkgLockPath)) {
+		return "npm";
+	}
+	if (existsSync(pnpmLockPath)) {
+		return "pnpm";
+	}
+	if (existsSync(yarnLockPath)) {
+		return "yarn";
+	}
+	throw new Error("No lockfile detected");
+};
+
 /**
  * Installs NPM dependencies and builds/releases the Electron app
  */
@@ -78,11 +95,10 @@ const runAction = () => {
 	const appRoot = getInput("app_root") || pkgRoot;
 
 	const pkgJsonPath = join(pkgRoot, "package.json");
-	const pkgLockPath = join(pkgRoot, "package-lock.json");
 
 	// Determine whether NPM should be used to run commands (instead of Yarn, which is the default)
-	const useNpm = existsSync(pkgLockPath);
-	log(`Will run ${useNpm ? "NPM" : "Yarn"} commands in directory "${pkgRoot}"`);
+	const packageManager = getPackageManager(pkgRoot);
+	log(`Will run ${packageManager} commands in directory "${pkgRoot}"`);
 
 	// Make sure `package.json` file exists
 	if (!existsSync(pkgJsonPath)) {
@@ -105,16 +121,34 @@ const runAction = () => {
 	// Disable console advertisements during install phase
 	setEnv("ADBLOCK", true);
 
-	log(`Installing dependencies using ${useNpm ? "NPM" : "Yarn"}…`);
-	run(useNpm ? "npm install" : "yarn", pkgRoot);
+	log(`Installing dependencies using ${packageManager}…`);
+	let installCommand;
+	switch (packageManager) {
+		case "pnpm": {
+			installCommand = "pnpm install";
+			break;
+		}
+		case "yarn": {
+			installCommand = "yarn";
+			break;
+		}
+		case "npm":
+		default: {
+			installCommand = "npm install";
+			break;
+		}
+	}
+	run(installCommand, pkgRoot);
 
 	// Run NPM build script if it exists
 	if (skipBuild) {
 		log("Skipping build script because `skip_build` option is set");
 	} else {
 		log("Running the build script…");
-		if (useNpm) {
+		if (packageManager === "npm") {
 			run(`npm run ${buildScriptName} --if-present`, pkgRoot);
+		} else if (packageManager === "pnpm") {
+			run(`pnpm run ${buildScriptName} --if-present`, pkgRoot);
 		} else {
 			// TODO: Use `yarn run ${buildScriptName} --if-present` once supported
 			// https://github.com/yarnpkg/yarn/issues/6894
@@ -129,12 +163,24 @@ const runAction = () => {
 	const cmd = useVueCli ? "vue-cli-service electron:build" : "electron-builder";
 	for (let i = 0; i < maxAttempts; i += 1) {
 		try {
-			run(
-				`${useNpm ? "npx --no-install" : "yarn run"} ${cmd} --${platform} ${
-					release ? "--publish always" : ""
-				} ${args}`,
-				appRoot,
-			);
+			let command;
+			switch (packageManager) {
+				case "pnpm": {
+					command = "pnpm run";
+					break;
+				}
+				case "yarn": {
+					command = "yarn run";
+					break;
+				}
+				case "npm":
+				default: {
+					command = "npx --no-install";
+					break;
+				}
+			}
+
+			run(`${command} ${cmd} --${platform} ${release ? "--publish always" : ""} ${args}`, appRoot);
 			break;
 		} catch (err) {
 			if (i < maxAttempts - 1) {
